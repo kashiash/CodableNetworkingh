@@ -6,45 +6,88 @@
 //
 
 import SwiftUI
+import Combine
 import Foundation
 
 
 
 struct ContentView: View {
+    @State private var requests = Set<AnyCancellable>()
+    @State private var rates = [CurrencyBRate]()
+    @State private var loadState = LoadState.loading
+    
+    enum LoadState {
+        case loading, success, failed
+    }
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundColor(.accentColor)
-            Text("Hello, world!")
-            Button("Fetch data"){
-        
-                let nbpUrl = URL(string: "https://api.nbp.pl/api/exchangerates/tables/B/")!
-                self.fetch(nbpUrl)
+
+                VStack {
+                    Image("NBP1")
+                        .scaledToFit()
+                    Text("Jaszczomp pozdrawia!")
+                    
+                    
+                    List(rates) {rate in
+                        NavigationLink {
+                         //   CurrencyDetail(rate:rate)
+                        } label: {
+                            HStack{
+                                Text(rate.id).font(.title)
+                      
+                                Text(rate.currency).font(.callout)
+                                
+                                Text(String(format: "%.4f", rate.mid))
+                                    .foregroundColor(.red)
+                                    .background{
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .stroke(Color.white.opacity(0.2),lineWidth: 1)
+                                    }
+                            }
+                        }
+                        .padding()
+                        .font(.callout)
+                    }
+                }
+         
+
+   
+    
+
+        .navigationTitle("Kusy Walut NBP")
+        .task(downloadCurrencyTable)
+        .refreshable(action: downloadCurrencyTable)
+    }
+    
+ 
+
+    
+    @Sendable func downloadCurrencyTable() async {
+        do {
+            let nbpUrl = URL(string: "https://api.nbp.pl/api/exchangerates/tables/B/")!
+            fetch(nbpUrl, defaultValue: [NbpBTable.example]) {
+                
+                if ($0[0].rates != nil){
+                    rates = $0[0].rates!
+                }
+                
             }
         }
-        .padding()
     }
     
-    func fetch(_ url: URL) {
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            if let error = error {
-                print("Something wrong while fetching data ")
-            } else if let data = data {
-                
-                print(String(data: data, encoding: .utf8)!)
-                let decoder = JSONDecoder()
-
-                do {
-                    let result = try decoder.decode([NbpTableB].self, from: data)
-                    print(result)
-                } catch {
-                    print("Something wrong while decoding data")
-                }
-            }
-        }.resume()
+    func fetch<T: Decodable>(_ url: URL, defaultValue: T, completion: @escaping (T) -> Void) {
+        let decoder = JSONDecoder()
+        
+       
+        URLSession.shared.dataTaskPublisher(for: url)
+            .retry(2)
+            .map(\.data)
+            .decode(type: T.self, decoder: decoder)
+            .replaceError(with: defaultValue)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveValue: completion)
+            .store(in: &requests)
     }
-    
 
 }
 
@@ -54,63 +97,7 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 
-struct NbpTableB: Codable {
 
-  var table         : String?  = nil
-  var no            : String?  = nil
-  var effectiveDate : String?  = nil
-  //var rates         : [Rates]? = []
 
-  enum CodingKeys: String, CodingKey {
 
-    case table         = "table"
-    case no            = "no"
-    case effectiveDate = "effectiveDate"
- //   case rates         = "rates"
-  
-  }
 
-  init(from decoder: Decoder) throws {
-    let values = try decoder.container(keyedBy: CodingKeys.self)
-
-    table         = try values.decodeIfPresent(String.self  , forKey: .table         )
-    no            = try values.decodeIfPresent(String.self  , forKey: .no            )
-    effectiveDate = try values.decodeIfPresent(String.self  , forKey: .effectiveDate )
-  //  rates         = try values.decodeIfPresent([Rates].self , forKey: .rates         )
- 
-  }
-
-  init() {
-
-  }
-
-}
-
-struct Rates: Codable {
-
-  var currency : String? = nil
-  var code     : String? = nil
-  var mid      : Double? = nil
-
-  enum CodingKeys: String, CodingKey {
-
-    case currency = "currency"
-    case code     = "code"
-    case mid      = "mid"
-  
-  }
-
-  init(from decoder: Decoder) throws {
-    let values = try decoder.container(keyedBy: CodingKeys.self)
-
-    currency = try values.decodeIfPresent(String.self , forKey: .currency )
-    code     = try values.decodeIfPresent(String.self , forKey: .code     )
-    mid      = try values.decodeIfPresent(Double.self , forKey: .mid      )
- 
-  }
-
-  init() {
-
-  }
-
-}
